@@ -18,26 +18,29 @@ from fpdf import FPDF
 
 # Set up PDF file - requires the DejaVu font to be installed in a fonts folder in the
 # fpdf package directory in the python environment
-pdf = FPDF()
-pdf.add_page()
-pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-pdf.add_font('DejaVuSans-Bold', '', 'DejaVuSans-Bold.ttf', uni=True)
-pdf.add_font('DejaVuSans-Oblique', '', 'DejaVuSans-Oblique.ttf', uni=True)
-pdf.add_font('DejaVuSans-BoldOblique', '', 'DejaVuSans-BoldOblique.ttf', uni=True)
-pdf.set_font('DejaVuSans-Bold', '', 14)
-pdf.cell(w=0, txt="Output Report", ln=1, align="C")
-pdf.ln(20)
+def buildPDF():
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+    pdf.add_font('DejaVuSans-Bold', '', 'DejaVuSans-Bold.ttf', uni=True)
+    pdf.add_font('DejaVuSans-Oblique', '', 'DejaVuSans-Oblique.ttf', uni=True)
+    pdf.add_font('DejaVuSans-BoldOblique', '', 'DejaVuSans-BoldOblique.ttf', uni=True)
+    pdf.set_font('DejaVuSans-Bold', '', 14)
+    pdf.cell(w=0, txt="Output Report", ln=1, align="C")
+    pdf.ln(20)
+    return pdf
 
 # Load the model to be used by SpaCy for Named Entity Recognition
 nlp = en_core_web_sm.load()
-
 # Set up a stemmer to use to stem words
 pstemmer = PorterStemmer()
 
 # Set up input path, stop words to be excluded and keywords to be matched
-input_path = 'C:\\t2'
+#TODO: Paramterise
+input_path = 'C:\\t1'
 stop_words = set(stopwords.words('english'))
-keywords = ['IS', 'terrorism', 'bomb', 'is', 'the', 'consortium']
+#TODO: read in from file
+keywords = ['alpha', 'ugly', 'street', 'bridge', 'Commander']
 
 # Filter out stopwords from keywords list, POS tag keywords
 filterkeywords = [w for w in keywords if w not in stop_words]
@@ -100,6 +103,7 @@ def ner(x):
 
 
 # Word tokens, parts of speech tagging
+#TODO: add n grams
 def wordtokens(dataframe):
     # Get all the words
     dataframe['words'] = (dataframe['sentences'].apply(lambda x: [word_tokenize(item) for item in x]))
@@ -288,13 +292,19 @@ scoringpos(d, word_matches)
 scoring(d, word_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
 scoringstem(d, word_matches)
+
+
+# Sort by scoring
+d = d.sort_values('score', ascending=False)
+
+#TODO: make this better - separate documents?
+
+pdf = buildPDF()
+
 # Print out the results of keyword matching
 printkeywordmatches(word_matches)
 # Find words in context with POS
 contextkeywords(d)
-
-# Sort by scoring
-d = d.sort_values('score', ascending=False)
 
 # Print sorted documents
 print('\n')
@@ -331,7 +341,10 @@ pdf.ln(10)
 
 # cater for small no of docs
 # cater for 0 scores
-topdocs = d.head(int(len(d)*0.1))
+if len(d) < 5:
+    topdocs = d
+else:
+    topdocs = d.head(int(len(d)*0.1))
 
 # Print results of NER for people
 pdf.set_font('DejaVuSans-Bold', '', 12)
@@ -359,4 +372,5 @@ for doc in topdocs['ner']:
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
 
 # Output the case document with all the printed results to PDF
+#TODO: Parameterise
 pdf.output('C:\\tout\\simple_demo.pdf')
