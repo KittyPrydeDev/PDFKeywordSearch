@@ -51,7 +51,9 @@ def file_read(keywordlist):
 
 
 keywords = file_read('C:\keywords.txt')
+keywords_bigrams = [w for w in keywords if len(w.split()) == 2]
 
+# TODO: factor for ngrams
 # Filter out stopwords from keywords list, POS tag keywords
 filterkeywords = [w for w in keywords if w not in stop_words]
 poskeywords = nltk.pos_tag(filterkeywords)
@@ -71,6 +73,7 @@ d = pd.DataFrame()
 # Create a list to use for clustering - this is for topic modelling
 doclist = []
 word_matches = defaultdict(list)
+bigram_matches = defaultdict(list)
 
 
 
@@ -114,6 +117,12 @@ def ner(x):
     return set(ents)
 
 
+# Return bigrams for matching
+def bigrams(x):
+    bigram = list(nltk.ngrams(x, 2))
+    return bigram
+
+
 # Word tokens, parts of speech tagging
 #TODO: add n grams
 def wordtokens(dataframe):
@@ -129,6 +138,8 @@ def wordtokens(dataframe):
     # Strip out non words and stop words
     dataframe['allwords'] = (dataframe['allwords'].apply(lambda x: [item for item in x if item.isalpha()
                                                                     and item not in stop_words]))
+    # Make bigram list of words
+    dataframe['bigrams'] = dataframe['allwords'].map(bigrams)
     # Calculate the frequency of each word in the document
     dataframe['mfreq'] = dataframe['allwords'].apply(nltk.FreqDist)
     # Get all the pos tagged words in a single list for each document
@@ -139,7 +150,8 @@ def wordtokens(dataframe):
     dataframe['stemwords'] = dataframe['allwords'].apply(lambda x: [pstemmer.stem(item) for item in x])
     # Calculate frequency of stemmed words
     dataframe['mfreqstem'] = dataframe['stemwords'].apply(nltk.FreqDist)
-
+    # Calculate frequency of bigrams
+    dataframe['mfreqbigrams'] = dataframe['bigrams'].apply(nltk.FreqDist)
     return dataframe
 
 
@@ -153,6 +165,15 @@ def scoring(dataframe, list):
                     dataframe.loc[idx, 'score'] += (row['mfreq'][word] * 0.75)
     return dataframe
 
+# TODO: Scoring functions for bigram words
+def scoringBigrams(dataframe, list):
+    for word in keywords_bigrams:
+        for idx, row in dataframe.iterrows():
+            match = tuple(word.split())
+            if match in row['bigrams']:
+                if not row['document'] in list[match]:
+                    list[match].append(row['document'])
+                    dataframe.loc[idx, 'score'] += row['mfreqbigrams'][match]
 
 # Score documents based on pos - should be most exact match
 def scoringpos(dataframe, list):
@@ -201,6 +222,18 @@ def printkeywordmatches(list):
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
         pdf.multi_cell(w=0, h=10, txt="Documents containing keyword: " + key, align="L")
+        pdf.ln(5)
+        pdf.set_font('DejaVu', '', 10)
+        pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
+        pdf.ln(10)
+
+def printkeywordmatchesBigrams(list):
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.cell(w=0, txt="Keyword match results: ", ln=1, align="L")
+    pdf.ln(10)
+    for key, val in list.items():
+        pdf.set_font('DejaVuSans-Bold', '', 10)
+        pdf.multi_cell(w=0, h=10, txt="Documents containing keyword: " + ' '.join(key), align="L")
         pdf.ln(5)
         pdf.set_font('DejaVu', '', 10)
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
@@ -304,6 +337,7 @@ scoringpos(d, word_matches)
 scoring(d, word_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
 scoringstem(d, word_matches)
+scoringBigrams(d, bigram_matches)
 
 
 # Sort by scoring
@@ -315,6 +349,9 @@ pdf = buildPDF()
 
 # Print out the results of keyword matching
 printkeywordmatches(word_matches)
+printkeywordmatchesBigrams(bigram_matches)
+
+
 # Find words in context with POS
 contextkeywords(d)
 
@@ -360,27 +397,23 @@ else:
 
 # Print results of NER for people
 pdf.set_font('DejaVuSans-Bold', '', 12)
-print('People discovered:')
 pdf.multi_cell(w=0, h=10, txt='People discovered:', align="L")
 pdf.set_font('DejaVu', '', 10)
 pdf.ln(5)
 for doc in topdocs['ner']:
     for (a,b) in doc:
         if b == 'PERSON':
-            print(a)
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
 pdf.ln(10)
 
 # Print results of NER for organisations
 pdf.set_font('DejaVuSans-Bold', '', 12)
-print('Orgs discovered:')
 pdf.multi_cell(w=0, h=0, txt='Orgs discovered:', align="L", border=1)
 pdf.set_font('DejaVu', '', 10)
 pdf.ln(5)
 for doc in topdocs['ner']:
     for (a,b) in doc:
         if b == 'ORG':
-            print(a)
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
 
 # Output the case document with all the printed results to PDF
