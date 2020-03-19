@@ -39,8 +39,18 @@ pstemmer = PorterStemmer()
 #TODO: Paramterise
 input_path = 'C:\\t1'
 stop_words = set(stopwords.words('english'))
-#TODO: read in from file
-keywords = ['alpha', 'ugly', 'street', 'bridge', 'Commander']
+
+# Get keywords from file
+def file_read(keywordlist):
+    content_array = []
+    with open(keywordlist) as f:
+        # Content_list is the list that contains the read lines.
+        for line in f:
+            content_array.append(str.rstrip(line))
+        return content_array
+
+
+keywords = file_read('C:\keywords.txt')
 
 # Filter out stopwords from keywords list, POS tag keywords
 filterkeywords = [w for w in keywords if w not in stop_words]
@@ -61,6 +71,8 @@ d = pd.DataFrame()
 # Create a list to use for clustering - this is for topic modelling
 doclist = []
 word_matches = defaultdict(list)
+
+
 
 
 # Use Tika to parse the file
