@@ -10,11 +10,10 @@ import string
 import re
 from nltk.corpus import stopwords
 from collections import defaultdict
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.stem import PorterStemmer
 import en_core_web_sm  # or any other model you downloaded via spacy download or pip
 from fpdf import FPDF
+
 
 # Set up PDF file - requires the DejaVu font to be installed in a fonts folder in the
 # fpdf package directory in the python environment
@@ -30,15 +29,18 @@ def buildPDF():
     pdf.ln(20)
     return pdf
 
+
 # Load the model to be used by SpaCy for Named Entity Recognition
 nlp = en_core_web_sm.load()
 # Set up a stemmer to use to stem words
 pstemmer = PorterStemmer()
 
+
 # Set up input path, stop words to be excluded and keywords to be matched
-#TODO: Paramterise
-input_path = 'C:\\t1'
+# TODO: Parameterise
+input_path = 'C:\\t2'
 stop_words = set(stopwords.words('english'))
+
 
 # Get keywords from file
 def file_read(keywordlist):
@@ -52,11 +54,15 @@ def file_read(keywordlist):
 
 keywords = file_read('C:\keywords.txt')
 keywords_bigrams = [w for w in keywords if len(w.split()) == 2]
+keywords_bigrams = [w.lower() for w in keywords_bigrams]
+
 
 # TODO: factor for ngrams
 # Filter out stopwords from keywords list, POS tag keywords
-filterkeywords = [w for w in keywords if w not in stop_words]
+filterkeywords = [w for w in keywords if w not in stop_words and len(w.split()) == 1]
 poskeywords = nltk.pos_tag(filterkeywords)
+filterkeywords = [w.lower() for w in filterkeywords]
+
 
 # If the first keyword is a verb, move it and reparse the list
 # This prevents verbs that may also be nouns being misidentified
@@ -65,17 +71,19 @@ if poskeywords[0][1] == 'VBZ':
     poskeywords = nltk.pos_tag(filterkeywords)
 
 # Build a list of stem keywords for matching
-stemkeywords = nltk.pos_tag([pstemmer.stem(t) for t in filterkeywords])
+stemkeywords = [pstemmer.stem(t) for t in filterkeywords]
+
+print(stemkeywords)
 
 # Set up Dataframe - this will hold all the documents and the scores
 d = pd.DataFrame()
 
-# Create a list to use for clustering - this is for topic modelling
-doclist = []
+
+# TODO: Iron out duplication scores
+word_matchesPOS = defaultdict(list)
 word_matches = defaultdict(list)
+word_matchesSTEM = defaultdict(list)
 bigram_matches = defaultdict(list)
-
-
 
 
 # Use Tika to parse the file
@@ -124,7 +132,7 @@ def bigrams(x):
 
 
 # Word tokens, parts of speech tagging
-#TODO: add n grams
+# TODO: add n grams
 def wordtokens(dataframe):
     # Get all the words
     dataframe['words'] = (dataframe['sentences'].apply(lambda x: [word_tokenize(item) for item in x]))
@@ -133,13 +141,13 @@ def wordtokens(dataframe):
     # Get all the named entity tags
     dataframe['ner'] = dataframe['sentences'].map(ner)
     # Lowercase every word and put them all in a single list for each document
-    dataframe['allwords'] = dataframe['words'].apply(lambda x: [item.strip(string.punctuation).lower()
+    dataframe['allwordsorig'] = dataframe['words'].apply(lambda x: [item.strip(string.punctuation).lower()
                                                                 for sublist in x for item in sublist])
     # Strip out non words and stop words
-    dataframe['allwords'] = (dataframe['allwords'].apply(lambda x: [item for item in x if item.isalpha()
+    dataframe['allwords'] = (dataframe['allwordsorig'].apply(lambda x: [item for item in x if item.isalpha()
                                                                     and item not in stop_words]))
     # Make bigram list of words
-    dataframe['bigrams'] = dataframe['allwords'].map(bigrams)
+    dataframe['bigrams'] = dataframe['allwordsorig'].map(bigrams)
     # Calculate the frequency of each word in the document
     dataframe['mfreq'] = dataframe['allwords'].apply(nltk.FreqDist)
     # Get all the pos tagged words in a single list for each document
@@ -157,13 +165,14 @@ def wordtokens(dataframe):
 
 # Score documents based on cleansed dataset - so should discount stopwords and be sensible
 def scoring(dataframe, list):
-    for word in keywords:
+    for word in filterkeywords:
         for idx, row in dataframe.iterrows():
             if word in row['allwords']:
                 if not row['document'] in list[word]:
                     list[word].append(row['document'])
                     dataframe.loc[idx, 'score'] += (row['mfreq'][word] * 0.75)
     return dataframe
+
 
 # TODO: Scoring functions for bigram words
 def scoringBigrams(dataframe, list):
@@ -174,14 +183,16 @@ def scoringBigrams(dataframe, list):
                 if not row['document'] in list[match]:
                     list[match].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqbigrams'][match]
+    return dataframe
+
 
 # Score documents based on pos - should be most exact match
 def scoringpos(dataframe, list):
     for (w1, t1) in poskeywords:
         for idx, row in dataframe.iterrows():
             if (w1, t1) in row['poslist']:
-                if not row['document'] in list[w1]:
-                    list[w1].append(row['document'])
+                if not row['document'] in list[w1.lower()]:
+                    list[w1.lower()].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqpos'][(w1, t1)]
     return dataframe
 
@@ -227,13 +238,14 @@ def printkeywordmatches(list):
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
         pdf.ln(10)
 
+
 def printkeywordmatchesBigrams(list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.cell(w=0, txt="Keyword match results: ", ln=1, align="L")
+    pdf.cell(w=0, txt="Two-worded keyword match results: ", ln=1, align="L")
     pdf.ln(10)
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
-        pdf.multi_cell(w=0, h=10, txt="Documents containing keyword: " + ' '.join(key), align="L")
+        pdf.multi_cell(w=0, h=10, txt="Documents containing keywords: " + ' '.join(key), align="L")
         pdf.ln(5)
         pdf.set_font('DejaVu', '', 10)
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
@@ -249,46 +261,6 @@ def tokenize_and_stem(text):
             filtered_tokens.append(token)
     stems = [pstemmer.stem(t) for t in filtered_tokens]
     return stems
-
-
-# Cluster documents and demonstrate prediction
-# K means clustering using the following parameters:
-# - filter out english stopwords
-# - word must appear in no more than 80% of documents
-# - word must appear in no less than 20% of documents
-# - token and stem words, allow up to 3 words together as a grouping
-# TODO - calculate ideal k value
-def clustering(documents):
-    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=0.2, use_idf=True,
-                                 tokenizer=tokenize_and_stem, ngram_range=(1, 3))
-    X = vectorizer.fit_transform(doclist)
-
-    true_k = 5
-    model = KMeans(n_clusters=true_k, init='k-means++', max_iter=100, n_init=1)
-    model.fit(X)
-
-    print("Top terms per cluster:")
-    order_centroids = model.cluster_centers_.argsort()[:, ::-1]
-    terms = vectorizer.get_feature_names()
-    for i in range(true_k):
-        print("Cluster %d:" % i),
-        for ind in order_centroids[i, :10]:
-            print(' %s' % terms[ind]),
-        print
-
-    print("\n")
-    print("Prediction")
-
-    Y = vectorizer.transform(["this is a document about islamic state "
-                              "and terrorists and bombs IS jihad terrorism isil"])
-    prediction = model.predict(Y)
-    print("A document with 'bad' terms would be in:")
-    print(prediction)
-
-    Y = vectorizer.transform(["completely innocent text just about kittens and puppies"])
-    prediction = model.predict(Y)
-    print("A document with 'good' terms would be in:")
-    print(prediction)
 
 
 # Main loop function
@@ -312,8 +284,6 @@ for input_file in glob.glob(os.path.join(input_path, '*.*')):
     if len(parsed) < 100:
         continue
 
-    # Create doclist for use in topic modelling
-    doclist.append(parsed)
     # Sentence fragments
     sentences = sent_tokenize(parsed)
 
@@ -336,14 +306,16 @@ scoringpos(d, word_matches)
 # Score 0.75 for matching word (case insensitive,  stop words removed)
 scoring(d, word_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
-scoringstem(d, word_matches)
+# TODO adjust so it doesn't double count exact matches
+scoringstem(d, word_matchesSTEM)
+print(word_matchesSTEM)
 scoringBigrams(d, bigram_matches)
 
 
 # Sort by scoring
 d = d.sort_values('score', ascending=False)
 
-#TODO: make this better - separate documents?
+# TODO: make this better - separate documents?
 
 pdf = buildPDF()
 
@@ -353,7 +325,8 @@ printkeywordmatchesBigrams(bigram_matches)
 
 
 # Find words in context with POS
-contextkeywords(d)
+# TODO: Make this better
+# contextkeywords(d)
 
 # Print sorted documents
 print('\n')
@@ -417,5 +390,5 @@ for doc in topdocs['ner']:
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
 
 # Output the case document with all the printed results to PDF
-#TODO: Parameterise
+# TODO: Parameterise
 pdf.output('C:\\tout\\simple_demo.pdf')
