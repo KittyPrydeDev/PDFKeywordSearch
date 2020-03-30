@@ -55,9 +55,12 @@ def file_read(keywordlist):
 keywords = file_read('C:\keywords.txt')
 keywords_bigrams = [w for w in keywords if len(w.split()) == 2]
 keywords_bigrams = [w.lower() for w in keywords_bigrams]
+keywords_trigrams = [w for w in keywords if len(w.split()) == 3]
+keywords_trigrams = [w.lower() for w in keywords_trigrams]
 
+# TODO: print these with the output to show any missing data
+missed_keywords = [w for w in keywords if len(w.split()) < 1 or len(w.split()) > 3]
 
-# TODO: factor for ngrams
 # Filter out stopwords from keywords list, POS tag keywords
 filterkeywords = [w for w in keywords if w not in stop_words and len(w.split()) == 1]
 poskeywords = nltk.pos_tag(filterkeywords)
@@ -84,6 +87,7 @@ word_matchesPOS = defaultdict(list)
 word_matches = defaultdict(list)
 word_matchesSTEM = defaultdict(list)
 bigram_matches = defaultdict(list)
+trigram_matches = defaultdict(list)
 
 
 # Use Tika to parse the file
@@ -130,9 +134,12 @@ def bigrams(x):
     bigram = list(nltk.ngrams(x, 2))
     return bigram
 
+# Return trigrams for matching
+def trigrams(x):
+    trigram = list(nltk.ngrams(x, 3))
+    return trigram
 
 # Word tokens, parts of speech tagging
-# TODO: add n grams
 def wordtokens(dataframe):
     # Get all the words
     dataframe['words'] = (dataframe['sentences'].apply(lambda x: [word_tokenize(item) for item in x]))
@@ -148,6 +155,8 @@ def wordtokens(dataframe):
                                                                     and item not in stop_words]))
     # Make bigram list of words
     dataframe['bigrams'] = dataframe['allwordsorig'].map(bigrams)
+    # Make trigram list of words
+    dataframe['trigrams'] = dataframe['allwordsorig'].map(trigrams)
     # Calculate the frequency of each word in the document
     dataframe['mfreq'] = dataframe['allwords'].apply(nltk.FreqDist)
     # Get all the pos tagged words in a single list for each document
@@ -160,9 +169,11 @@ def wordtokens(dataframe):
     dataframe['mfreqstem'] = dataframe['stemwords'].apply(nltk.FreqDist)
     # Calculate frequency of bigrams
     dataframe['mfreqbigrams'] = dataframe['bigrams'].apply(nltk.FreqDist)
+    # Calculate frequency of trigrams
+    dataframe['mfreqtrigrams'] = dataframe['trigrams'].apply(nltk.FreqDist)
     return dataframe
 
-
+# TODO: Check scoring on POS/regular/stem for duplication
 # Score documents based on cleansed dataset - so should discount stopwords and be sensible
 def scoring(dataframe, list):
     for word in filterkeywords:
@@ -174,7 +185,7 @@ def scoring(dataframe, list):
     return dataframe
 
 
-# TODO: Scoring functions for bigram words
+# Scoring for bigrams - exact match only
 def scoringBigrams(dataframe, list):
     for word in keywords_bigrams:
         for idx, row in dataframe.iterrows():
@@ -183,6 +194,17 @@ def scoringBigrams(dataframe, list):
                 if not row['document'] in list[match]:
                     list[match].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqbigrams'][match]
+    return dataframe
+
+# Scoring for trigrams - exact match only
+def scoringTrigrams(dataframe, list):
+    for word in keywords_trigrams:
+        for idx, row in dataframe.iterrows():
+            match = tuple(word.split())
+            if match in row['trigrams']:
+                if not row['document'] in list[match]:
+                    list[match].append(row['document'])
+                    dataframe.loc[idx, 'score'] += row['mfreqtrigrams'][match]
     return dataframe
 
 
@@ -239,9 +261,24 @@ def printkeywordmatches(list):
         pdf.ln(10)
 
 
+# Show all the documents that had bigram keyword matches, for each keyword
 def printkeywordmatchesBigrams(list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Two-worded keyword match results: ", ln=1, align="L")
+    pdf.ln(10)
+    for key, val in list.items():
+        pdf.set_font('DejaVuSans-Bold', '', 10)
+        pdf.multi_cell(w=0, h=10, txt="Documents containing keywords: " + ' '.join(key), align="L")
+        pdf.ln(5)
+        pdf.set_font('DejaVu', '', 10)
+        pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
+        pdf.ln(10)
+
+
+# Show all the documents that had trigram keyword matches, for each keyword
+def printkeywordmatchesTrigrams(list):
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.cell(w=0, txt="Three-worded keyword match results: ", ln=1, align="L")
     pdf.ln(10)
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
@@ -306,10 +343,13 @@ scoringpos(d, word_matches)
 # Score 0.75 for matching word (case insensitive,  stop words removed)
 scoring(d, word_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
-# TODO adjust so it doesn't double count exact matches
+# TODO adjust so it doesn't double count exact matches -
+# make a tuple for the stem and the original word - only score it if the word in full isn't in the original list
 scoringstem(d, word_matchesSTEM)
-print(word_matchesSTEM)
+# Score 1 for matching a bigram
 scoringBigrams(d, bigram_matches)
+# Score 1 for matching a trigram
+scoringTrigrams(d, trigram_matches)
 
 
 # Sort by scoring
@@ -319,9 +359,10 @@ d = d.sort_values('score', ascending=False)
 
 pdf = buildPDF()
 
-# Print out the results of keyword matching
+# Print out the results of exact keyword matching
 printkeywordmatches(word_matches)
 printkeywordmatchesBigrams(bigram_matches)
+printkeywordmatchesTrigrams(trigram_matches)
 
 
 # Find words in context with POS
@@ -363,10 +404,13 @@ pdf.ln(10)
 
 # cater for small no of docs
 # cater for 0 scores
+print(len(d))
 if len(d) < 5:
     topdocs = d
 else:
     topdocs = d.head(int(len(d)*0.1))
+
+print(topdocs)
 
 # Print results of NER for people
 pdf.set_font('DejaVuSans-Bold', '', 12)
