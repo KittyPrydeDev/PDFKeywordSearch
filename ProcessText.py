@@ -74,7 +74,7 @@ if poskeywords[0][1] == 'VBZ':
     poskeywords = nltk.pos_tag(filterkeywords)
 
 # Build a list of stem keywords for matching
-stemkeywords = [pstemmer.stem(t) for t in filterkeywords]
+stemkeywords = [(pstemmer.stem(t),t) for t in filterkeywords]
 
 print(stemkeywords)
 
@@ -82,12 +82,10 @@ print(stemkeywords)
 d = pd.DataFrame()
 
 
-# TODO: Iron out duplication scores
-word_matchesPOS = defaultdict(list)
 word_matches = defaultdict(list)
-word_matchesSTEM = defaultdict(list)
 bigram_matches = defaultdict(list)
 trigram_matches = defaultdict(list)
+pos_matches = defaultdict(list)
 
 
 # Use Tika to parse the file
@@ -157,31 +155,52 @@ def wordtokens(dataframe):
     dataframe['bigrams'] = dataframe['allwordsorig'].map(bigrams)
     # Make trigram list of words
     dataframe['trigrams'] = dataframe['allwordsorig'].map(trigrams)
-    # Calculate the frequency of each word in the document
-    dataframe['mfreq'] = dataframe['allwords'].apply(nltk.FreqDist)
     # Get all the pos tagged words in a single list for each document
     dataframe['poslist'] = dataframe['pos'].apply(lambda x: [item for sublist in x for item in sublist])
     # Calculate the frequency of each pos tagged word
     dataframe['mfreqpos'] = dataframe['poslist'].apply(nltk.FreqDist)
     # Get the stems of all the words
-    dataframe['stemwords'] = dataframe['allwords'].apply(lambda x: [pstemmer.stem(item) for item in x])
+    dataframe['stemwordstuple'] = dataframe['allwords'].apply(lambda x: [(pstemmer.stem(item), item) for item in x])
     # Calculate frequency of stemmed words
-    dataframe['mfreqstem'] = dataframe['stemwords'].apply(nltk.FreqDist)
+    dataframe['mfreqstem'] = dataframe['stemwordstuple'].apply(nltk.FreqDist)
     # Calculate frequency of bigrams
     dataframe['mfreqbigrams'] = dataframe['bigrams'].apply(nltk.FreqDist)
     # Calculate frequency of trigrams
     dataframe['mfreqtrigrams'] = dataframe['trigrams'].apply(nltk.FreqDist)
     return dataframe
 
-# TODO: Check scoring on POS/regular/stem for duplication
-# Score documents based on cleansed dataset - so should discount stopwords and be sensible
-def scoring(dataframe, list):
-    for word in filterkeywords:
+
+# Score documents based on pos - should be most exact match
+def scoringpos(dataframe, list, poslist):
+    for (w1, t1) in poskeywords:
         for idx, row in dataframe.iterrows():
-            if word in row['allwords']:
-                if not row['document'] in list[word]:
-                    list[word].append(row['document'])
-                    dataframe.loc[idx, 'score'] += (row['mfreq'][word] * 0.75)
+            if (w1, t1) in row['poslist']:
+                if not row['document'] in list[w1.lower()]:
+                    list[w1.lower()].append(row['document'])
+                    poslist[(w1.lower(), t1)].append(row['document'])
+                    dataframe.loc[idx, 'score'] += row['mfreqpos'][(w1, t1)]
+                    print('scored ' + str(row['mfreqpos'][(w1, t1)]) + ' for ' + str((w1, t1)) + ' in ' + row['document'])
+            if w1.lower() in [x[0].lower() for x in row['poslist']]:
+                for word, tag in row['poslist']:
+                    if word.lower() == w1.lower() and (word.lower(), tag) not in poslist[word.lower(), tag]:
+                        if not row['document'] in poslist[(word.lower(), tag)]:
+                            poslist[(word.lower(), tag)].append(row['document'])
+                            list[word.lower()].append(row['document'])
+                            dataframe.loc[idx, 'score'] += (row['mfreqpos'][word.lower()] * 0.75)
+                            print('scored ' + str(row['mfreqpos'][(word, tag)] * 0.75) + ' for ' + word + ' with ' + tag + ' in ' + row['document'])
+    return dataframe
+
+
+# Score documents based on stemmed words in cleansed dataset - so should discount stopwords and be sensible
+def scoringstem(dataframe, list):
+    for stem, word in stemkeywords:
+        for idx, row in dataframe.iterrows():
+            for s1, w1 in row['stemwordstuple']:
+                if stem == s1 and w1 not in list[w1]:
+                    if not row['document'] in list[w1]:
+                        list[w1].append(row['document'])
+                        dataframe.loc[idx, 'score'] += (row['mfreqstem'][(stem, w1)] * 0.5)
+                        print('scored ' + str(row['mfreqstem'][(stem, w1)] * 0.5) + ' for ' + stem + ' - ' + word + ' and match was ' + s1 + ' - ' + w1 + ' in ' + row['document'])
     return dataframe
 
 
@@ -205,28 +224,6 @@ def scoringTrigrams(dataframe, list):
                 if not row['document'] in list[match]:
                     list[match].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqtrigrams'][match]
-    return dataframe
-
-
-# Score documents based on pos - should be most exact match
-def scoringpos(dataframe, list):
-    for (w1, t1) in poskeywords:
-        for idx, row in dataframe.iterrows():
-            if (w1, t1) in row['poslist']:
-                if not row['document'] in list[w1.lower()]:
-                    list[w1.lower()].append(row['document'])
-                    dataframe.loc[idx, 'score'] += row['mfreqpos'][(w1, t1)]
-    return dataframe
-
-
-# Score documents based on stemmed words in cleansed dataset - so should discount stopwords and be sensible
-def scoringstem(dataframe, list):
-    for word in stemkeywords:
-        for idx, row in dataframe.iterrows():
-            if word in row['stemwords']:
-                if not row['document'] in list[word]:
-                    list[word].append(row['document'])
-                    dataframe.loc[idx, 'score'] += (row['mfreqstem'][word] * 0.5)
     return dataframe
 
 
@@ -338,14 +335,10 @@ wordtokens(d)
 d['score'] = 0
 
 # Now we score in a calculated manner:
-# Score 1 for matching word (case sensitive and POS)
-scoringpos(d, word_matches)
-# Score 0.75 for matching word (case insensitive,  stop words removed)
-scoring(d, word_matches)
+# Score 1 for matching word (case sensitive and POS), Score 0.75 for matching word (case insensitive,  stop words removed)
+scoringpos(d, word_matches, pos_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
-# TODO adjust so it doesn't double count exact matches -
-# make a tuple for the stem and the original word - only score it if the word in full isn't in the original list
-scoringstem(d, word_matchesSTEM)
+scoringstem(d, word_matches)
 # Score 1 for matching a bigram
 scoringBigrams(d, bigram_matches)
 # Score 1 for matching a trigram
@@ -367,6 +360,7 @@ printkeywordmatchesTrigrams(trigram_matches)
 
 # Find words in context with POS
 # TODO: Make this better
+# TODO: show stem matches
 # contextkeywords(d)
 
 # Print sorted documents
