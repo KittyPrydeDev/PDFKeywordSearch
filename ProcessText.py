@@ -13,6 +13,35 @@ from collections import defaultdict
 from nltk.stem import PorterStemmer
 import en_core_web_sm  # or any other model you downloaded via spacy download or pip
 from fpdf import FPDF
+import sys, getopt
+
+input_path = ''
+output_path = ''
+keywords_path = ''
+
+def main(argv):
+    try:
+        opts, args = getopt.getopt(argv,"hi:o:k:",["ifile=","ofile=","keywords="])
+        print(opts)
+    except getopt.GetoptError:
+        print('ProcessText.py -i <inputfile> -o <outputfile> -k <keywords>')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('ProcessText.py -i <inputfile> -o <outputfile> -k <keywords>')
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            global input_path
+            input_path = arg
+        elif opt in ("-o", "--ofile"):
+            global output_path
+            output_path = arg
+        elif opt in ("-k", "--keywords"):
+            global keywords_path
+            keywords_path = arg
+
+
+main(sys.argv[1:])
 
 
 # Set up PDF file - requires the DejaVu font to be installed in a fonts folder in the
@@ -37,8 +66,6 @@ pstemmer = PorterStemmer()
 
 
 # Set up input path, stop words to be excluded and keywords to be matched
-# TODO: Parameterise
-input_path = 'C:\\t2'
 stop_words = set(stopwords.words('english'))
 
 
@@ -52,7 +79,7 @@ def file_read(keywordlist):
         return content_array
 
 
-keywords = file_read('C:\keywords.txt')
+keywords = file_read(keywords_path)
 keywords_bigrams = [w for w in keywords if len(w.split()) == 2]
 keywords_bigrams = [w.lower() for w in keywords_bigrams]
 keywords_trigrams = [w for w in keywords if len(w.split()) == 3]
@@ -299,11 +326,12 @@ def tokenize_and_stem(text):
 
 # Main loop function
 # Iterate over all files in the folder and process each one in turn
+
 print('Starting processing - the following files have been processed:')
 for input_file in glob.glob(os.path.join(input_path, '*.*')):
     # Grab the file name
     filename = os.path.basename(input_file)
-    fname = os.path.splitext(filename)[0]
+ #   fname = os.path.splitext(filename)[0]
     print(filename)
 
     # Parse the file to get to the text
@@ -324,6 +352,9 @@ for input_file in glob.glob(os.path.join(input_path, '*.*')):
     # Build up dataframe
     temp = pd.Series([filename, sentences])
     d = d.append(temp, ignore_index=True)
+
+
+
 
 print('\n')
 d.reset_index(drop=True, inplace=True)
@@ -428,5 +459,4 @@ for doc in topdocs['ner']:
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
 
 # Output the case document with all the printed results to PDF
-# TODO: Parameterise
-pdf.output('C:\\tout\\simple_demo.pdf')
+pdf.output(output_path)
