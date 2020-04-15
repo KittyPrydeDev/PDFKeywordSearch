@@ -103,7 +103,6 @@ if poskeywords[0][1] == 'VBZ':
 # Build a list of stem keywords for matching
 stemkeywords = [(pstemmer.stem(t),t) for t in filterkeywords]
 
-print(stemkeywords)
 
 # Set up Dataframe - this will hold all the documents and the scores
 d = pd.DataFrame()
@@ -144,6 +143,18 @@ def spacy_pos(x):
     return pos_sent
 
 
+def lemmas(x):
+    return [(pstemmer.stem(token.text), token.text) for token in x]
+
+
+def spacy_lemma(x):
+    lemma_sent = []
+    for sentence in x:
+        processed_spacy = nlp(sentence)
+        lemma_sent.append(lemmas(processed_spacy))
+    return lemma_sent
+
+
 # Add NER tags to words, and return the set so we don't have duplicates
 def ner(x):
     ents = []
@@ -172,6 +183,8 @@ def wordtokens(dataframe):
     dataframe['pos'] = dataframe['sentences'].map(spacy_pos)
     # Get all the named entity tags
     dataframe['ner'] = dataframe['sentences'].map(ner)
+    # Add lemma to words
+    dataframe['lemma'] = dataframe['sentences'].map(spacy_lemma)
     # Lowercase every word and put them all in a single list for each document
     dataframe['allwordsorig'] = dataframe['words'].apply(lambda x: [item.strip(string.punctuation).lower()
                                                                 for sublist in x for item in sublist])
@@ -206,7 +219,6 @@ def scoringpos(dataframe, list, poslist):
                     list[w1.lower()].append(row['document'])
                     poslist[(w1.lower(), t1)].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqpos'][(w1, t1)]
-                    print('scored ' + str(row['mfreqpos'][(w1, t1)]) + ' for ' + str((w1, t1)) + ' in ' + row['document'])
             if w1.lower() in [x[0].lower() for x in row['poslist']]:
                 for word, tag in row['poslist']:
                     if word.lower() == w1.lower() and (word.lower(), tag) not in poslist[word.lower(), tag]:
@@ -214,7 +226,6 @@ def scoringpos(dataframe, list, poslist):
                             poslist[(word.lower(), tag)].append(row['document'])
                             list[word.lower()].append(row['document'])
                             dataframe.loc[idx, 'score'] += (row['mfreqpos'][word.lower()] * 0.75)
-                            print('scored ' + str(row['mfreqpos'][(word, tag)] * 0.75) + ' for ' + word + ' with ' + tag + ' in ' + row['document'])
     return dataframe
 
 
@@ -227,7 +238,6 @@ def scoringstem(dataframe, list):
                     if not row['document'] in list[w1]:
                         list[w1].append(row['document'])
                         dataframe.loc[idx, 'score'] += (row['mfreqstem'][(stem, w1)] * 0.5)
-                        print('scored ' + str(row['mfreqstem'][(stem, w1)] * 0.5) + ' for ' + stem + ' - ' + word + ' and match was ' + s1 + ' - ' + w1 + ' in ' + row['document'])
     return dataframe
 
 
@@ -257,17 +267,30 @@ def scoringTrigrams(dataframe, list):
 # Find keywords using POS, show the sentence the word was found in
 def contextkeywords(dataframe):
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.cell(w=0,txt="Here are the exact keyword matches in context: ", ln=1, align="L")
+    pdf.cell(w=0,txt="Here are the exact keyword matches in context,", ln=1, align="L")
+    pdf.ln(5)
+    pdf.cell(w=0, txt="where the sentence is fewer than 50 words:", ln=1, align="L")
     pdf.ln(10)
     for (w1, t1) in poskeywords:
         for idx, row in dataframe.iterrows():
             for index, r in enumerate(row['pos']):
-                if (w1, t1) in r:
+                if (w1, t1) in r and len(row['words'][index]) < 50:
                     pdf.set_font('DejaVuSans-Bold', '', 10)
                     pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ', align="L")
                     pdf.set_font('DejaVu', '', 10)
                     pdf.multi_cell(w=0, h=10, txt=' '.join(row['words'][index]),  align="L")
                     pdf.ln(5)
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.cell(w=0, txt="Here are the stemmed keyword matches:", ln=1, align="L")
+    pdf.ln(10)
+    for stemtuple in stemkeywords:
+        for idx, row in dataframe.iterrows():
+            for index, r in enumerate(row['lemma']):
+                for rowtuple in list(set(r)):
+                    if stemtuple[0] in rowtuple[0] and len(row['words'][index]) < 50:
+                        pdf.set_font('DejaVu', '', 10)
+                        pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ' + rowtuple[1], align="L")
+                        pdf.ln(5)
     return dataframe
 
 # Show all the documents that were not processed
@@ -374,6 +397,9 @@ d.columns = ['document', 'sentences']
 wordtokens(d)
 d['score'] = 0
 
+print(d['pos'].head())
+print(d['stemwordstuple'].head())
+
 # Now we score in a calculated manner:
 # Score 1 for matching word (case sensitive and POS), Score 0.75 for matching word (case insensitive,  stop words removed)
 scoringpos(d, word_matches, pos_matches)
@@ -401,9 +427,8 @@ printkeywordsmissed(missed_keywords)
 
 
 # Find words in context with POS
-# TODO: Make this better
 # TODO: show stem matches
-# contextkeywords(d)
+contextkeywords(d)
 
 # Print sorted documents
 print('\n')
