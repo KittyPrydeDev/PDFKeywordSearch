@@ -85,7 +85,7 @@ keywords_bigrams = [w.lower() for w in keywords_bigrams]
 keywords_trigrams = [w for w in keywords if len(w.split()) == 3]
 keywords_trigrams = [w.lower() for w in keywords_trigrams]
 
-# TODO: print these with the output to show any missing data
+# Keywords that have not been picked up anywhere else
 missed_keywords = [w for w in keywords if len(w.split()) < 1 or len(w.split()) > 3]
 
 # Filter out stopwords from keywords list, POS tag keywords
@@ -270,12 +270,21 @@ def contextkeywords(dataframe):
                     pdf.ln(5)
     return dataframe
 
+# Show all the documents that were not processed
+def printkeywordsmissed(list):
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.cell(w=0, txt="Missed keywords: ", ln=1, align="L")
+    pdf.ln(5)
+    for item in list:
+        pdf.set_font('DejaVu', '', 10)
+        pdf.multi_cell(w=0, h=10, txt=item, align="L")
+    pdf.ln(10)
 
 # Show all the documents that had keyword matches, for each keyword
 def printkeywordmatches(list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Keyword match results: ", ln=1, align="L")
-    pdf.ln(10)
+    pdf.ln(5)
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
         pdf.multi_cell(w=0, h=10, txt="Documents containing keyword: " + key, align="L")
@@ -289,7 +298,7 @@ def printkeywordmatches(list):
 def printkeywordmatchesBigrams(list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Two-worded keyword match results: ", ln=1, align="L")
-    pdf.ln(10)
+    pdf.ln(5)
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
         pdf.multi_cell(w=0, h=10, txt="Documents containing keywords: " + ' '.join(key), align="L")
@@ -303,7 +312,7 @@ def printkeywordmatchesBigrams(list):
 def printkeywordmatchesTrigrams(list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Three-worded keyword match results: ", ln=1, align="L")
-    pdf.ln(10)
+    pdf.ln(5)
     for key, val in list.items():
         pdf.set_font('DejaVuSans-Bold', '', 10)
         pdf.multi_cell(w=0, h=10, txt="Documents containing keywords: " + ' '.join(key), align="L")
@@ -384,9 +393,11 @@ d = d.sort_values('score', ascending=False)
 pdf = buildPDF()
 
 # Print out the results of exact keyword matching
+
 printkeywordmatches(word_matches)
 printkeywordmatchesBigrams(bigram_matches)
 printkeywordmatchesTrigrams(trigram_matches)
+printkeywordsmissed(missed_keywords)
 
 
 # Find words in context with POS
