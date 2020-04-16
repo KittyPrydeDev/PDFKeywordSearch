@@ -112,6 +112,7 @@ word_matches = defaultdict(list)
 bigram_matches = defaultdict(list)
 trigram_matches = defaultdict(list)
 pos_matches = defaultdict(list)
+stem_matches = defaultdict(list)
 
 
 # Use Tika to parse the file
@@ -230,13 +231,14 @@ def scoringpos(dataframe, list, poslist):
 
 
 # Score documents based on stemmed words in cleansed dataset - so should discount stopwords and be sensible
-def scoringstem(dataframe, list):
+def scoringstem(dataframe, list, stem_matches):
     for stem, word in stemkeywords:
         for idx, row in dataframe.iterrows():
             for s1, w1 in row['stemwordstuple']:
                 if stem == s1 and w1 not in list[w1]:
                     if not row['document'] in list[w1]:
                         list[w1].append(row['document'])
+                        stem_matches["Stem Word: " + s1 + ". Original Word: " + w1].append(row['document'])
                         dataframe.loc[idx, 'score'] += (row['mfreqstem'][(stem, w1)] * 0.5)
     return dataframe
 
@@ -276,22 +278,27 @@ def contextkeywords(dataframe):
             for index, r in enumerate(row['pos']):
                 if (w1, t1) in r and len(row['words'][index]) < 50:
                     pdf.set_font('DejaVuSans-Bold', '', 10)
-                    pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ', align="L")
+                    pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ' + w1, align="L")
                     pdf.set_font('DejaVu', '', 10)
                     pdf.multi_cell(w=0, h=10, txt=' '.join(row['words'][index]),  align="L")
                     pdf.ln(5)
+    pdf.ln(10)
+
+
+def stemwordsfound(dict):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Here are the stemmed keyword matches:", ln=1, align="L")
     pdf.ln(10)
-    for stemtuple in stemkeywords:
-        for idx, row in dataframe.iterrows():
-            for index, r in enumerate(row['lemma']):
-                for rowtuple in list(set(r)):
-                    if stemtuple[0] in rowtuple[0] and len(row['words'][index]) < 50:
-                        pdf.set_font('DejaVu', '', 10)
-                        pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ' + rowtuple[1], align="L")
-                        pdf.ln(5)
-    return dataframe
+    # strip duplicates
+    for key, value in dict.items():
+        pdf.set_font('DejaVuSans-Bold', '', 10)
+        pdf.multi_cell(w=0, h=10, txt=key + ':', align="L")
+        pdf.set_font('DejaVu', '', 10)
+        pdf.multi_cell(w=0, h=10, txt=', '.join(value), align="L")
+        pdf.ln(5)
+    pdf.ln(10)
+
+
 
 # Show all the documents that were not processed
 def printkeywordsmissed(list):
@@ -315,7 +322,7 @@ def printkeywordmatches(list):
         pdf.set_font('DejaVu', '', 10)
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
         pdf.ln(10)
-
+    pdf.ln(10)
 
 # Show all the documents that had bigram keyword matches, for each keyword
 def printkeywordmatchesBigrams(list):
@@ -329,7 +336,7 @@ def printkeywordmatchesBigrams(list):
         pdf.set_font('DejaVu', '', 10)
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
         pdf.ln(10)
-
+    pdf.ln(10)
 
 # Show all the documents that had trigram keyword matches, for each keyword
 def printkeywordmatchesTrigrams(list):
@@ -343,7 +350,7 @@ def printkeywordmatchesTrigrams(list):
         pdf.set_font('DejaVu', '', 10)
         pdf.multi_cell(w=0, h=10, txt=', '.join(val), align="L")
         pdf.ln(10)
-
+    pdf.ln(10)
 
 # tokenize each word in the text and then filter out non alphabet words, then get all the stems
 def tokenize_and_stem(text):
@@ -397,14 +404,12 @@ d.columns = ['document', 'sentences']
 wordtokens(d)
 d['score'] = 0
 
-print(d['pos'].head())
-print(d['stemwordstuple'].head())
 
 # Now we score in a calculated manner:
 # Score 1 for matching word (case sensitive and POS), Score 0.75 for matching word (case insensitive,  stop words removed)
 scoringpos(d, word_matches, pos_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
-scoringstem(d, word_matches)
+scoringstem(d, word_matches, stem_matches)
 # Score 1 for matching a bigram
 scoringBigrams(d, bigram_matches)
 # Score 1 for matching a trigram
@@ -414,21 +419,8 @@ scoringTrigrams(d, trigram_matches)
 # Sort by scoring
 d = d.sort_values('score', ascending=False)
 
-# TODO: make this better - separate documents?
 
 pdf = buildPDF()
-
-# Print out the results of exact keyword matching
-
-printkeywordmatches(word_matches)
-printkeywordmatchesBigrams(bigram_matches)
-printkeywordmatchesTrigrams(trigram_matches)
-printkeywordsmissed(missed_keywords)
-
-
-# Find words in context with POS
-# TODO: show stem matches
-contextkeywords(d)
 
 # Print sorted documents
 print('\n')
@@ -437,7 +429,7 @@ pdf.set_font('DejaVuSans-Bold', '', 12)
 pdf.cell(w=0,txt="Here are the scores based on cleansed data: ", ln=1, align="L")
 pdf.ln(5)
 pdf.set_font('DejaVu', '', 10)
-print(d[['document', 'score']])
+
 
 # Effective page width, or just epw
 epw = pdf.w - 2 * pdf.l_margin
@@ -459,19 +451,30 @@ for row in data:
         pdf.cell(col_width, th, str(datum), border=1, align='C')
     pdf.ln(th)
 
-
-# pdf.multi_cell(w=0, h=10, txt=d[['document', 'score']].to_string(index=False), align="L")
 pdf.ln(10)
+
+# Print out the results of exact keyword matching
+
+printkeywordmatches(word_matches)
+printkeywordmatchesBigrams(bigram_matches)
+printkeywordmatchesTrigrams(trigram_matches)
+printkeywordsmissed(missed_keywords)
+
+
+# Find words in context with POS
+contextkeywords(d)
+stemwordsfound(stem_matches)
+
+
 
 # cater for small no of docs
 # cater for 0 scores
-print(len(d))
+
 if len(d) < 5:
     topdocs = d
 else:
     topdocs = d.head(int(len(d)*0.1))
 
-print(topdocs)
 
 # Print results of NER for people
 pdf.set_font('DejaVuSans-Bold', '', 12)
@@ -493,6 +496,7 @@ for doc in topdocs['ner']:
     for (a,b) in doc:
         if b == 'ORG':
             pdf.multi_cell(w=0, h=10, txt=a, align="L")
+pdf.ln(10)
 
 # Output the case document with all the printed results to PDF
 pdf.output(output_path)
