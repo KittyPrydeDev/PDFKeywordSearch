@@ -15,6 +15,7 @@ import en_core_web_sm  # or any other model you downloaded via spacy download or
 from fpdf import FPDF
 import sys, getopt
 
+
 input_path = ''
 output_path = ''
 keywords_path = ''
@@ -24,11 +25,11 @@ def main(argv):
         opts, args = getopt.getopt(argv,"hi:o:k:",["ifile=","ofile=","keywords="])
         print(opts)
     except getopt.GetoptError:
-        print('ProcessText.py -i <inputfile> -o <outputfile> -k <keywords>')
+        print('ProcessText.py -i <inputfile> -o <outputpath> -k <keywords>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print('ProcessText.py -i <inputfile> -o <outputfile> -k <keywords>')
+            print('ProcessText.py -i <inputfile> -o <outputpath> -k <keywords>')
             sys.exit()
         elif opt in ("-i", "--ifile"):
             global input_path
@@ -46,7 +47,7 @@ main(sys.argv[1:])
 
 # Set up PDF file - requires the DejaVu font to be installed in a fonts folder in the
 # fpdf package directory in the python environment
-def buildPDF():
+def buildPDF(title):
     pdf = FPDF()
     pdf.add_page()
     pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
@@ -54,7 +55,7 @@ def buildPDF():
     pdf.add_font('DejaVuSans-Oblique', '', 'DejaVuSans-Oblique.ttf', uni=True)
     pdf.add_font('DejaVuSans-BoldOblique', '', 'DejaVuSans-BoldOblique.ttf', uni=True)
     pdf.set_font('DejaVuSans-Bold', '', 14)
-    pdf.cell(w=0, txt="Output Report", ln=1, align="C")
+    pdf.cell(w=0, txt=title, ln=1, align="C")
     pdf.ln(20)
     return pdf
 
@@ -171,10 +172,12 @@ def bigrams(x):
     bigram = list(nltk.ngrams(x, 2))
     return bigram
 
+
 # Return trigrams for matching
 def trigrams(x):
     trigram = list(nltk.ngrams(x, 3))
     return trigram
+
 
 # Word tokens, parts of speech tagging
 def wordtokens(dataframe):
@@ -267,7 +270,7 @@ def scoringTrigrams(dataframe, list):
 
 
 # Find keywords using POS, show the sentence the word was found in
-def contextkeywords(dataframe):
+def contextkeywords(pdf, dataframe):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0,txt="Here are the exact keyword matches in context,", ln=1, align="L")
     pdf.ln(5)
@@ -285,7 +288,7 @@ def contextkeywords(dataframe):
     pdf.ln(10)
 
 
-def stemwordsfound(dict):
+def stemwordsfound(pdf, dict):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Here are the stemmed keyword matches:", ln=1, align="L")
     pdf.ln(10)
@@ -299,9 +302,8 @@ def stemwordsfound(dict):
     pdf.ln(10)
 
 
-
 # Show all the documents that were not processed
-def printkeywordsmissed(list):
+def printkeywordsmissed(pdf, list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Missed keywords: ", ln=1, align="L")
     pdf.ln(5)
@@ -310,8 +312,9 @@ def printkeywordsmissed(list):
         pdf.multi_cell(w=0, h=10, txt=item, align="L")
     pdf.ln(10)
 
+
 # Show all the documents that had keyword matches, for each keyword
-def printkeywordmatches(list):
+def printkeywordmatches(pdf, list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Keyword match results: ", ln=1, align="L")
     pdf.ln(5)
@@ -324,8 +327,9 @@ def printkeywordmatches(list):
         pdf.ln(10)
     pdf.ln(10)
 
+
 # Show all the documents that had bigram keyword matches, for each keyword
-def printkeywordmatchesBigrams(list):
+def printkeywordmatchesBigrams(pdf, list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Two-worded keyword match results: ", ln=1, align="L")
     pdf.ln(5)
@@ -338,8 +342,9 @@ def printkeywordmatchesBigrams(list):
         pdf.ln(10)
     pdf.ln(10)
 
+
 # Show all the documents that had trigram keyword matches, for each keyword
-def printkeywordmatchesTrigrams(list):
+def printkeywordmatchesTrigrams(pdf, list):
     pdf.set_font('DejaVuSans-Bold', '', 12)
     pdf.cell(w=0, txt="Three-worded keyword match results: ", ln=1, align="L")
     pdf.ln(5)
@@ -352,6 +357,7 @@ def printkeywordmatchesTrigrams(list):
         pdf.ln(10)
     pdf.ln(10)
 
+
 # tokenize each word in the text and then filter out non alphabet words, then get all the stems
 def tokenize_and_stem(text):
     tokens = [word for sent in nltk.sent_tokenize(text) for word in nltk.word_tokenize(sent)]
@@ -362,15 +368,14 @@ def tokenize_and_stem(text):
     stems = [pstemmer.stem(t) for t in filtered_tokens]
     return stems
 
-
 # Main loop function
 # Iterate over all files in the folder and process each one in turn
+
 
 print('Starting processing - the following files have been processed:')
 for input_file in glob.glob(os.path.join(input_path, '*.*')):
     # Grab the file name
     filename = os.path.basename(input_file)
- #   fname = os.path.splitext(filename)[0]
     print(filename)
 
     # Parse the file to get to the text
@@ -392,9 +397,6 @@ for input_file in glob.glob(os.path.join(input_path, '*.*')):
     temp = pd.Series([filename, sentences])
     d = d.append(temp, ignore_index=True)
 
-
-
-
 print('\n')
 d.reset_index(drop=True, inplace=True)
 d.columns = ['document', 'sentences']
@@ -403,7 +405,6 @@ d.columns = ['document', 'sentences']
 # Word tokenize the sentences, cleanup, parts of speech tagging
 wordtokens(d)
 d['score'] = 0
-
 
 # Now we score in a calculated manner:
 # Score 1 for matching word (case sensitive and POS), Score 0.75 for matching word (case insensitive,  stop words removed)
@@ -415,88 +416,97 @@ scoringBigrams(d, bigram_matches)
 # Score 1 for matching a trigram
 scoringTrigrams(d, trigram_matches)
 
-
 # Sort by scoring
 d = d.sort_values('score', ascending=False)
 
-
-pdf = buildPDF()
-
-# Print sorted documents
-print('\n')
-pdf.ln(10)
-pdf.set_font('DejaVuSans-Bold', '', 12)
-pdf.cell(w=0,txt="Here are the scores based on cleansed data: ", ln=1, align="L")
-pdf.ln(5)
-pdf.set_font('DejaVu', '', 10)
+scores_pdf = buildPDF("Scores Report")
 
 
-# Effective page width, or just epw
-epw = pdf.w - 2 * pdf.l_margin
+def scores_output(pdf, dataframe):
+    pdf.ln(10)
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.cell(w=0,txt="Here are the scores based on cleansed data: ", ln=1, align="L")
+    pdf.ln(5)
+    pdf.set_font('DejaVu', '', 10)
+    # Effective page width, or just epw
+    epw = pdf.w - 2 * pdf.l_margin
 
-# Set column width to 1/4 of effective page width to distribute content
-# evenly across table and page
-col_width = epw / 2
+    # Set column width to 1/4 of effective page width to distribute content
+    # evenly across table and page
+    col_width = epw / 2
 
-# Text height is the same as current font size
-th = pdf.font_size
-data = d[['document', 'score']].values
+    # Text height is the same as current font size
+    th = pdf.font_size
+    data = dataframe[['document', 'score']].values
 
-for row in data:
-    for datum in row:
-        # Enter data in colums
-        # Notice the use of the function str to coerce any input to the
-        # string type. This is needed
-        # since pyFPDF expects a string, not a number.
-        pdf.cell(col_width, th, str(datum), border=1, align='C')
-    pdf.ln(th)
+    for row in data:
+        for datum in row:
+            # Enter data in colums
+            # Notice the use of the function str to coerce any input to the
+            # string type. This is needed
+            # since pyFPDF expects a string, not a number.
+            pdf.cell(col_width, th, str(datum), border=1, align='C')
+        pdf.ln(th)
 
-pdf.ln(10)
+    pdf.ln(10)
+
+
+scores_output(scores_pdf, d)
 
 # Print out the results of exact keyword matching
-
-printkeywordmatches(word_matches)
-printkeywordmatchesBigrams(bigram_matches)
-printkeywordmatchesTrigrams(trigram_matches)
-printkeywordsmissed(missed_keywords)
-
+printkeywordmatches(scores_pdf, word_matches)
+printkeywordmatchesBigrams(scores_pdf, bigram_matches)
+printkeywordmatchesTrigrams(scores_pdf, trigram_matches)
+printkeywordsmissed(scores_pdf, missed_keywords)
 
 # Find words in context with POS
-contextkeywords(d)
-stemwordsfound(stem_matches)
+contextkeywords(scores_pdf, d)
+stemwordsfound(scores_pdf, stem_matches)
 
-
+peoplePDF = buildPDF("People and Organisations Report")
 
 # cater for small no of docs
 # cater for 0 scores
-
-if len(d) < 5:
-    topdocs = d
+if len(d) < 10:
+    topdocs = d['ner']
 else:
-    topdocs = d.head(int(len(d)*0.1))
+    topdocs = d['ner'].head(int(len(d)*0.1))
 
 
-# Print results of NER for people
-pdf.set_font('DejaVuSans-Bold', '', 12)
-pdf.multi_cell(w=0, h=10, txt='People discovered:', align="L")
-pdf.set_font('DejaVu', '', 10)
-pdf.ln(5)
-for doc in topdocs['ner']:
-    for (a,b) in doc:
-        if b == 'PERSON':
-            pdf.multi_cell(w=0, h=10, txt=a, align="L")
-pdf.ln(10)
+def build_people_orgs_list(dataframe):
+    people = []
+    orgs = []
+    for doc in dataframe:
+        for (a, b) in doc:
+            clean_a = re.sub(r'[^A-Za-z0-9 -]+', '', a)
+            if b == 'PERSON' and clean_a not in people and not clean_a.islower():
+                people.append(clean_a)
+            if b == 'ORG' and clean_a not in orgs:
+                orgs.append(clean_a)
+    return people, orgs
 
-# Print results of NER for organisations
-pdf.set_font('DejaVuSans-Bold', '', 12)
-pdf.multi_cell(w=0, h=0, txt='Orgs discovered:', align="L", border=1)
-pdf.set_font('DejaVu', '', 10)
-pdf.ln(5)
-for doc in topdocs['ner']:
-    for (a,b) in doc:
-        if b == 'ORG':
-            pdf.multi_cell(w=0, h=10, txt=a, align="L")
-pdf.ln(10)
 
+def print_people_orgs(pdf, nerList):
+    # Print results of NER for people
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.multi_cell(w=0, h=10, txt='People discovered:', align="L")
+    pdf.set_font('DejaVu', '', 10)
+    pdf.ln(5)
+    people, orgs = build_people_orgs_list(nerList)
+    for p in people:
+        pdf.multi_cell(w=0, h=10, txt=p, align="L")
+    pdf.ln(10)
+    # Print results of NER for organisations
+    pdf.set_font('DejaVuSans-Bold', '', 12)
+    pdf.multi_cell(w=0, h=0, txt='Orgs discovered:', align="L")
+    pdf.set_font('DejaVu', '', 10)
+    pdf.ln(5)
+    for org in orgs:
+        pdf.multi_cell(w=0, h=10, txt=org, align="L")
+    pdf.ln(10)
+
+
+print_people_orgs(peoplePDF, topdocs)
 # Output the case document with all the printed results to PDF
-pdf.output(output_path)
+scores_pdf.output(output_path + '\scores_report.pdf')
+peoplePDF.output(output_path + '\people_orgs_report.pdf')
