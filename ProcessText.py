@@ -20,6 +20,14 @@ input_path = ''
 output_path = ''
 keywords_path = ''
 
+# Load the model to be used by SpaCy for Named Entity Recognition
+nlp = en_core_web_sm.load()
+# Set up a stemmer to use to stem words
+pstemmer = PorterStemmer()
+# Set up input path, stop words to be excluded and keywords to be matched
+stop_words = set(stopwords.words('english'))
+
+
 def main(argv):
     try:
         opts, args = getopt.getopt(argv,"hi:o:k:",["ifile=","ofile=","keywords="])
@@ -60,16 +68,6 @@ def buildPDF(title):
     return pdf
 
 
-# Load the model to be used by SpaCy for Named Entity Recognition
-nlp = en_core_web_sm.load()
-# Set up a stemmer to use to stem words
-pstemmer = PorterStemmer()
-
-
-# Set up input path, stop words to be excluded and keywords to be matched
-stop_words = set(stopwords.words('english'))
-
-
 # Get keywords from file
 def file_read(keywordlist):
     content_array = []
@@ -104,10 +102,8 @@ if poskeywords[0][1] == 'VBZ':
 # Build a list of stem keywords for matching
 stemkeywords = [(pstemmer.stem(t),t) for t in filterkeywords]
 
-
 # Set up Dataframe - this will hold all the documents and the scores
 d = pd.DataFrame()
-
 
 word_matches = defaultdict(list)
 bigram_matches = defaultdict(list)
@@ -145,18 +141,6 @@ def spacy_pos(x):
     return pos_sent
 
 
-def lemmas(x):
-    return [(pstemmer.stem(token.text), token.text) for token in x]
-
-
-def spacy_lemma(x):
-    lemma_sent = []
-    for sentence in x:
-        processed_spacy = nlp(sentence)
-        lemma_sent.append(lemmas(processed_spacy))
-    return lemma_sent
-
-
 # Add NER tags to words, and return the set so we don't have duplicates
 def ner(x):
     ents = []
@@ -187,8 +171,6 @@ def wordtokens(dataframe):
     dataframe['pos'] = dataframe['sentences'].map(spacy_pos)
     # Get all the named entity tags
     dataframe['ner'] = dataframe['sentences'].map(ner)
-    # Add lemma to words
-    dataframe['lemma'] = dataframe['sentences'].map(spacy_lemma)
     # Lowercase every word and put them all in a single list for each document
     dataframe['allwordsorig'] = dataframe['words'].apply(lambda x: [item.strip(string.punctuation).lower()
                                                                 for sublist in x for item in sublist])
@@ -211,7 +193,6 @@ def wordtokens(dataframe):
     dataframe['mfreqbigrams'] = dataframe['bigrams'].apply(nltk.FreqDist)
     # Calculate frequency of trigrams
     dataframe['mfreqtrigrams'] = dataframe['trigrams'].apply(nltk.FreqDist)
-    return dataframe
 
 
 # Score documents based on pos - should be most exact match
@@ -230,7 +211,6 @@ def scoringpos(dataframe, list, poslist):
                             poslist[(word.lower(), tag)].append(row['document'])
                             list[word.lower()].append(row['document'])
                             dataframe.loc[idx, 'score'] += (row['mfreqpos'][word.lower()] * 0.75)
-    return dataframe
 
 
 # Score documents based on stemmed words in cleansed dataset - so should discount stopwords and be sensible
@@ -243,7 +223,6 @@ def scoringstem(dataframe, list, stem_matches):
                         list[w1].append(row['document'])
                         stem_matches["Stem Word: " + s1 + ". Original Word: " + w1].append(row['document'])
                         dataframe.loc[idx, 'score'] += (row['mfreqstem'][(stem, w1)] * 0.5)
-    return dataframe
 
 
 # Scoring for bigrams - exact match only
@@ -255,7 +234,7 @@ def scoringBigrams(dataframe, list):
                 if not row['document'] in list[match]:
                     list[match].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqbigrams'][match]
-    return dataframe
+
 
 # Scoring for trigrams - exact match only
 def scoringTrigrams(dataframe, list):
@@ -266,7 +245,6 @@ def scoringTrigrams(dataframe, list):
                 if not row['document'] in list[match]:
                     list[match].append(row['document'])
                     dataframe.loc[idx, 'score'] += row['mfreqtrigrams'][match]
-    return dataframe
 
 
 # Find keywords using POS, show the sentence the word was found in
@@ -463,50 +441,74 @@ printkeywordsmissed(scores_pdf, missed_keywords)
 contextkeywords(scores_pdf, d)
 stemwordsfound(scores_pdf, stem_matches)
 
-peoplePDF = buildPDF("People and Organisations Report")
+peoplePDF = buildPDF("People and Organisations Report for top 10% scoring documents")
 
+# TODO: count occurrences and sort by most seen
 # cater for small no of docs
 # cater for 0 scores
+
+# TODO: fix what I broke here!
+topdocs = pd.DataFrame()
 if len(d) < 10:
-    topdocs = d['ner']
+    topdocs['ner'] = d['ner']
+    topdocs['document'] = d['document']
 else:
-    topdocs = d['ner'].head(int(len(d)*0.1))
+    topdocs['ner'] = d['ner'].head(int(len(d)*0.1))
+    topdocs['document'] = d['document']
+
+#topdocs['freqdist'] = topdocs['ner'].apply(nltk.FreqDist)
+topdocs['scorepeople'] = 0
+topdocs['scoreorgs'] = 0
+
+
 
 
 def build_people_orgs_list(dataframe):
-    people = []
-    orgs = []
-    for doc in dataframe:
+    people = {}
+    orgs = {}
+    for doc in dataframe['ner']:
         for (a, b) in doc:
             clean_a = re.sub(r'[^A-Za-z0-9 -]+', '', a)
-            if b == 'PERSON' and clean_a not in people and not clean_a.islower():
-                people.append(clean_a)
-            if b == 'ORG' and clean_a not in orgs:
-                orgs.append(clean_a)
+            if b == 'PERSON' and not clean_a.islower():
+                clean_a = clean_a.title()
+                if clean_a not in people:
+                    people[clean_a] = 1
+                else:
+                    people[clean_a] += 1
+            if b == 'ORG':
+                clean_a = clean_a.title()
+                if clean_a not in orgs:
+                    orgs[clean_a] = 1
+                else:
+                    orgs[clean_a] += 1
     return people, orgs
 
 
-def print_people_orgs(pdf, nerList):
+people, orgs = build_people_orgs_list(topdocs)
+
+
+def print_people_orgs(pdf, people, orgs):
     # Print results of NER for people
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.multi_cell(w=0, h=10, txt='People discovered:', align="L")
+    pdf.multi_cell(w=0, h=10, txt='People discovered more than once:', align="L")
     pdf.set_font('DejaVu', '', 10)
     pdf.ln(5)
-    people, orgs = build_people_orgs_list(nerList)
-    for p in people:
-        pdf.multi_cell(w=0, h=10, txt=p, align="L")
-    pdf.ln(10)
+    for p, c in people.items():
+        if len(p) > 2 and c > 1:
+            pdf.multi_cell(w=0, h=10, txt=p + ' ('+str(c)+' times)', align="L")
+            pdf.ln(5)
     # Print results of NER for organisations
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.multi_cell(w=0, h=0, txt='Orgs discovered:', align="L")
+    pdf.multi_cell(w=0, h=0, txt='Orgs discovered more than once:', align="L")
     pdf.set_font('DejaVu', '', 10)
     pdf.ln(5)
-    for org in orgs:
-        pdf.multi_cell(w=0, h=10, txt=org, align="L")
-    pdf.ln(10)
+    for (o, c) in orgs.items():
+        if len(p) > 2 and c > 1:
+            pdf.multi_cell(w=0, h=10, txt=o + ' ('+str(c)+' times)', align="L")
+            pdf.ln(5)
 
 
-print_people_orgs(peoplePDF, topdocs)
+print_people_orgs(peoplePDF, people, orgs)
 # Output the case document with all the printed results to PDF
 scores_pdf.output(output_path + '\scores_report.pdf')
 peoplePDF.output(output_path + '\people_orgs_report.pdf')
