@@ -443,11 +443,10 @@ stemwordsfound(scores_pdf, stem_matches)
 
 peoplePDF = buildPDF("People and Organisations Report for top 10% scoring documents")
 
-# TODO: count occurrences and sort by most seen
+
 # cater for small no of docs
 # cater for 0 scores
 
-# TODO: fix what I broke here!
 topdocs = pd.DataFrame()
 if len(d) < 10:
     topdocs['ner'] = d['ner']
