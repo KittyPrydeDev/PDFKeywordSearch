@@ -17,6 +17,7 @@ A second report shows a list of people and organisations identified within the t
 ### How do I get set up? ###
 
 You will need:
+Java
 A tika server running (for running offline)
 en_core_web_sm loaded for Spacy (for running offline)
 The DejaVU sans font suite installed 
