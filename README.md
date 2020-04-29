@@ -18,7 +18,7 @@ A second report shows a list of people and organisations identified within the t
 
 You will need:
 Java
-A tika server running (for running offline)
+tika server file location must be set in environment variable (clear temp folder first)
 en_core_web_sm loaded for Spacy (for running offline)
 The DejaVU sans font suite installed 
 

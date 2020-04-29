@@ -1,6 +1,10 @@
-import glob
-from tika import parser
 import os
+cwd = os.getcwd()
+os.environ['TIKA_SERVER_JAR'] = 'file:////' + cwd + '\\tika-server-1.24.jar'
+print(os.environ.get('TIKA_SERVER_JAR'))
+import glob
+import tika
+from tika import parser
 import nltk
 from nltk import word_tokenize
 from nltk import sent_tokenize
@@ -11,7 +15,7 @@ import re
 from nltk.corpus import stopwords
 from collections import defaultdict
 from nltk.stem import PorterStemmer
-import en_core_web_sm  # or any other model you downloaded via spacy download or pip
+import en_core_web_sm
 from fpdf import FPDF
 import sys, getopt
 
@@ -114,6 +118,7 @@ stem_matches = defaultdict(list)
 
 # Use Tika to parse the file
 def parsewithtika(inputfile):
+    tika.initVM()
     parsed = parser.from_file(inputfile)
     # Extract the text content from the parsed file
     psd = parsed["content"]
