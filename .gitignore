@@ -3,3 +3,5 @@
 .idea/inspectionProfiles/profiles_settings.xml
 *.xml
 *.xml
+/build/
+/dist/
