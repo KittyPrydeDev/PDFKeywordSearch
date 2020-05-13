@@ -105,6 +105,7 @@ if poskeywords[0][1] == 'VBZ':
 
 # Build a list of stem keywords for matching
 stemkeywords = [(pstemmer.stem(t),t) for t in filterkeywords]
+print(stemkeywords)
 
 # Set up Dataframe - this will hold all the documents and the scores
 d = pd.DataFrame()
@@ -507,7 +508,7 @@ def print_people_orgs(pdf, people, orgs):
     pdf.set_font('DejaVu', '', 10)
     pdf.ln(5)
     for (o, c) in orgs.items():
-        if len(p) > 2 and c > 1:
+        if len(o) > 2 and c > 1:
             pdf.multi_cell(w=0, h=10, txt=o + ' ('+str(c)+' times)', align="L")
             pdf.ln(5)
 
