@@ -21,11 +21,21 @@ Java
 
 Usage is from the command line and takes the following arguments:
 -i "C:\input" -- the folder of PDF files to trawl through
--o "C:\outpout"  -- the folder where the reports should be saved
--k "C:\keywords.txt"  -- the location of the keywords list (each keyword (or set of words to match, up to 3) should be on a new line)
+-o "C:\output"  -- the folder where the reports should be saved
+-k "C:\keywords.txt"  -- the location of the keywords list (each keyword (or set of words to match, up to 3) should 
+be on a new line)
 
-E.G python processtext.py -i "C:\input" -o "C:\output"  -k "C:\keywords.txt"
+E.G python process_text.py -i "C:\input" -o "C:\output"  -k "C:\keywords.txt"
 
 ### Who do I talk to? ###
 
 TIDE Software team
+
+### Creating executable ###
+
+Within Condo environment install all the package requirements. (May also need to run `python -m spacy download en_core_web_sm`.)
+
+Need to have `tika-server.1.24.jar` and `tika-server.1.24.jar.md5` in package directory.
+
+Then run 'pyinstaller process_text.spec'. The generated `processtext.exe` and required .ddl files etc. will be located 
+within the `dist` folder. 
