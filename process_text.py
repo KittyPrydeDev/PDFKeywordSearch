@@ -1,8 +1,7 @@
 import os
+
 cwd = os.getcwd()
 os.environ['TIKA_SERVER_JAR'] = 'file:////' + cwd + '\\tika-server-1.24.jar'
-print(os.environ.get('TIKA_SERVER_JAR'))
-import glob
 import tika
 from tika import parser
 import nltk
@@ -18,11 +17,15 @@ from nltk.stem import PorterStemmer
 import en_core_web_sm
 from fpdf import FPDF
 import sys, getopt
+from os.path import join, isdir, isfile
+import argparse
 
+__version__ = '1.0.3'
+__author__ = "TIDE"
 
-input_path = ''
-output_path = ''
-keywords_path = ''
+input_path = None
+output_path = None
+keywords_path = None
 
 # Load the model to be used by SpaCy for Named Entity Recognition
 nlp = en_core_web_sm.load()
@@ -32,26 +35,42 @@ pstemmer = PorterStemmer()
 stop_words = set(stopwords.words('english'))
 
 
-def main(argv):
-    try:
-        opts, args = getopt.getopt(argv,"hi:o:k:",["ifile=","ofile=","keywords="])
-        print(opts)
-    except getopt.GetoptError:
-        print('ProcessText.py -i <inputfile> -o <outputpath> -k <keywords>')
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print('ProcessText.py -i <inputfile> -o <outputpath> -k <keywords>')
-            sys.exit()
-        elif opt in ("-i", "--ifile"):
-            global input_path
-            input_path = arg
-        elif opt in ("-o", "--ofile"):
-            global output_path
-            output_path = arg
-        elif opt in ("-k", "--keywords"):
-            global keywords_path
-            keywords_path = arg
+def is_input_parameter_valid(provided_path, should_be_file):
+    if should_be_file:
+        return provided_path is not None and len(provided_path.strip()) > 0 \
+               and isfile(provided_path)
+    else:
+        # Should be a directory
+        return provided_path is not None and len(provided_path.strip()) > 0 \
+               and isdir(provided_path)
+
+
+def main(args):
+    description = f'Process Text (v{__version__})'
+    print(description)
+    ap = argparse.ArgumentParser(description=description)
+    ap.add_argument('-i', '--input_folder', help='Input folder', required=True)
+    ap.add_argument('-o', '--output_folder', help='Output folder', required=True)
+    ap.add_argument('-k', '--keywords', help='File containing keywords', required=True)
+
+    parsed_args = ap.parse_args(args)
+
+    global input_path
+    input_path = parsed_args.input_folder
+    global output_path
+    output_path = parsed_args.output_folder
+    global keywords_path
+    keywords_path = parsed_args.keywords
+
+    if not (is_input_parameter_valid(input_path, False) and
+            is_input_parameter_valid(output_path, False) and
+            is_input_parameter_valid(keywords_path, True)):
+        print('Invalid input parameters provided')
+        exit(0)
+    else:
+        print(f'Input folder: {input_path}')
+        print(f'Output folder: {output_path}')
+        print(f'Keywords file: {keywords_path}')
 
 
 main(sys.argv[1:])
@@ -62,10 +81,10 @@ main(sys.argv[1:])
 def buildPDF(title):
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-    pdf.add_font('DejaVuSans-Bold', '', 'DejaVuSans-Bold.ttf', uni=True)
-    pdf.add_font('DejaVuSans-Oblique', '', 'DejaVuSans-Oblique.ttf', uni=True)
-    pdf.add_font('DejaVuSans-BoldOblique', '', 'DejaVuSans-BoldOblique.ttf', uni=True)
+    pdf.add_font('DejaVu', '', join('font', 'DejaVuSans.ttf'), uni=True)
+    pdf.add_font('DejaVuSans-Bold', '', join('font', 'DejaVuSans-Bold.ttf'), uni=True)
+    pdf.add_font('DejaVuSans-Oblique', '', join('font', 'DejaVuSans-Oblique.ttf'), uni=True)
+    pdf.add_font('DejaVuSans-BoldOblique', '', join('font', 'DejaVuSans-BoldOblique.ttf'), uni=True)
     pdf.set_font('DejaVuSans-Bold', '', 14)
     pdf.cell(w=0, txt=title, ln=1, align="C")
     pdf.ln(20)
@@ -96,7 +115,6 @@ filterkeywords = [w for w in keywords if w not in stop_words and len(w.split()) 
 poskeywords = nltk.pos_tag(filterkeywords)
 filterkeywords = [w.lower() for w in filterkeywords]
 
-
 # If the first keyword is a verb, move it and reparse the list
 # This prevents verbs that may also be nouns being misidentified
 if poskeywords[0][1] == 'VBZ':
@@ -104,8 +122,7 @@ if poskeywords[0][1] == 'VBZ':
     poskeywords = nltk.pos_tag(filterkeywords)
 
 # Build a list of stem keywords for matching
-stemkeywords = [(pstemmer.stem(t),t) for t in filterkeywords]
-print(stemkeywords)
+stemkeywords = [(pstemmer.stem(t), t) for t in filterkeywords]
 
 # Set up Dataframe - this will hold all the documents and the scores
 d = pd.DataFrame()
@@ -179,10 +196,10 @@ def wordtokens(dataframe):
     dataframe['ner'] = dataframe['sentences'].map(ner)
     # Lowercase every word and put them all in a single list for each document
     dataframe['allwordsorig'] = dataframe['words'].apply(lambda x: [item.strip(string.punctuation).lower()
-                                                                for sublist in x for item in sublist])
+                                                                    for sublist in x for item in sublist])
     # Strip out non words and stop words
     dataframe['allwords'] = (dataframe['allwordsorig'].apply(lambda x: [item for item in x if item.isalpha()
-                                                                    and item not in stop_words]))
+                                                                        and item not in stop_words]))
     # Make bigram list of words
     dataframe['bigrams'] = dataframe['allwordsorig'].map(bigrams)
     # Make trigram list of words
@@ -256,7 +273,7 @@ def scoringTrigrams(dataframe, list):
 # Find keywords using POS, show the sentence the word was found in
 def contextkeywords(pdf, dataframe):
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.cell(w=0,txt="Here are the exact keyword matches in context,", ln=1, align="L")
+    pdf.cell(w=0, txt="Here are the exact keyword matches in context,", ln=1, align="L")
     pdf.ln(5)
     pdf.cell(w=0, txt="where the sentence is fewer than 50 words:", ln=1, align="L")
     pdf.ln(10)
@@ -267,7 +284,7 @@ def contextkeywords(pdf, dataframe):
                     pdf.set_font('DejaVuSans-Bold', '', 10)
                     pdf.multi_cell(w=0, h=10, txt=row['document'] + ' - ' + w1, align="L")
                     pdf.set_font('DejaVu', '', 10)
-                    pdf.multi_cell(w=0, h=10, txt=' '.join(row['words'][index]),  align="L")
+                    pdf.multi_cell(w=0, h=10, txt=' '.join(row['words'][index]), align="L")
                     pdf.ln(5)
     pdf.ln(10)
 
@@ -352,15 +369,20 @@ def tokenize_and_stem(text):
     stems = [pstemmer.stem(t) for t in filtered_tokens]
     return stems
 
+
 # Main loop function
+
+input_files = []
+for root, d_names, f_names in os.walk(input_path):
+    for f in f_names:
+        input_files.append(os.path.join(root, f))
+
 # Iterate over all files in the folder and process each one in turn
-
-
-print('Starting processing - the following files have been processed:')
-for input_file in glob.glob(os.path.join(input_path, '*.*')):
-    # Grab the file name
-    filename = os.path.basename(input_file)
-    print(filename)
+print(f'Starting processing {len(input_files)} files \nThe following files have been processed:')
+for input_file in input_files:
+    # Grab the file name with the path relative to the supplied input folder
+    filename = os.path.relpath(input_file, input_path)
+    print(f'- {filename}')
 
     # Parse the file to get to the text
     parsed = parsewithtika(input_file)
@@ -381,17 +403,16 @@ for input_file in glob.glob(os.path.join(input_path, '*.*')):
     temp = pd.Series([filename, sentences])
     d = d.append(temp, ignore_index=True)
 
-print('\n')
 d.reset_index(drop=True, inplace=True)
 d.columns = ['document', 'sentences']
-
 
 # Word tokenize the sentences, cleanup, parts of speech tagging
 wordtokens(d)
 d['score'] = 0
 
 # Now we score in a calculated manner:
-# Score 1 for matching word (case sensitive and POS), Score 0.75 for matching word (case insensitive,  stop words removed)
+# Score 1 for matching word (case sensitive and POS),
+# Score 0.75 for matching word (case insensitive,  stop words removed)
 scoringpos(d, word_matches, pos_matches)
 # Score 0.5 for matching stem of word (case insensitive, stop words removed)
 scoringstem(d, word_matches, stem_matches)
@@ -409,7 +430,7 @@ scores_pdf = buildPDF("Scores Report")
 def scores_output(pdf, dataframe):
     pdf.ln(10)
     pdf.set_font('DejaVuSans-Bold', '', 12)
-    pdf.cell(w=0,txt="Here are the scores based on cleansed data: ", ln=1, align="L")
+    pdf.cell(w=0, txt="Here are the scores based on cleansed data: ", ln=1, align="L")
     pdf.ln(5)
     pdf.set_font('DejaVu', '', 10)
     # Effective page width, or just epw
@@ -449,7 +470,6 @@ stemwordsfound(scores_pdf, stem_matches)
 
 peoplePDF = buildPDF("People and Organisations Report for top 10% scoring documents")
 
-
 # cater for small no of docs
 # cater for 0 scores
 
@@ -458,14 +478,12 @@ if len(d) < 10:
     topdocs['ner'] = d['ner']
     topdocs['document'] = d['document']
 else:
-    topdocs['ner'] = d['ner'].head(int(len(d)*0.1))
+    topdocs['ner'] = d['ner'].head(int(len(d) * 0.1))
     topdocs['document'] = d['document']
 
-#topdocs['freqdist'] = topdocs['ner'].apply(nltk.FreqDist)
+# topdocs['freqdist'] = topdocs['ner'].apply(nltk.FreqDist)
 topdocs['scorepeople'] = 0
 topdocs['scoreorgs'] = 0
-
-
 
 
 def build_people_orgs_list(dataframe):
@@ -500,7 +518,7 @@ def print_people_orgs(pdf, people, orgs):
     pdf.ln(5)
     for p, c in people.items():
         if len(p) > 2 and c > 1:
-            pdf.multi_cell(w=0, h=10, txt=p + ' ('+str(c)+' times)', align="L")
+            pdf.multi_cell(w=0, h=10, txt=p + ' (' + str(c) + ' times)', align="L")
             pdf.ln(5)
     # Print results of NER for organisations
     pdf.set_font('DejaVuSans-Bold', '', 12)
@@ -509,11 +527,16 @@ def print_people_orgs(pdf, people, orgs):
     pdf.ln(5)
     for (o, c) in orgs.items():
         if len(o) > 2 and c > 1:
-            pdf.multi_cell(w=0, h=10, txt=o + ' ('+str(c)+' times)', align="L")
+            pdf.multi_cell(w=0, h=10, txt=o + ' (' + str(c) + ' times)', align="L")
             pdf.ln(5)
 
 
 print_people_orgs(peoplePDF, people, orgs)
 # Output the case document with all the printed results to PDF
-scores_pdf.output(output_path + '\scores_report.pdf')
-peoplePDF.output(output_path + '\people_orgs_report.pdf')
+scores_report_file = join(output_path, 'scores_report.pdf')
+people_orgs_report_file = (join(output_path, 'people_orgs_report.pdf'))
+scores_pdf.output(scores_report_file)
+peoplePDF.output(people_orgs_report_file)
+
+print('Completed processing')
+print(f'Output files are: \n- {scores_report_file}\n- {people_orgs_report_file}')
